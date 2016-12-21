@@ -69,5 +69,5 @@ Main()
 ; EnableThread
 ; EnableXP
 ; EnableAdmin
-; Executable = ..\afk-operator-cli-master\stealth_bot\basebot01\bot.exe
+; Executable = test.exe
 ; Debugger = Standalone
