@@ -822,6 +822,16 @@ Procedure.b IRC_CMD_LIST(ParentSocketID.l) ; Sends the LIST command, to get a li
   ProcedureReturn Result  
 EndProcedure
 
+Procedure.b IRC_CMD_JOIN(ParentSocketID.l, ChannelName$) ; Sends the JOIN Command
+  Protected Result.b = #False
+  ForEach Instances()
+    If Instances()\SocketID = ParentSocketID
+      IRC_RawText(Instances()\SocketID, "JOIN :"+ChannelName$)
+    EndIf
+  Next
+  ProcedureReturn Result
+EndProcedure
+
 ; =IRC_CONNECT======================================================================================================
 
 Procedure IRC_ProtocolHandle(SocketID, Line$) ; This Function will analyze coded Lines and make changes to the structure-db as needed
@@ -1040,9 +1050,9 @@ EndProcedure
 
 
 ; IDE Options = PureBasic 5.31 (Windows - x86)
-; CursorPosition = 878
-; FirstLine = 125
-; Folding = ABACEAAAAAAgf8
+; CursorPosition = 824
+; FirstLine = 132
+; Folding = ABACEAAAAAAg-3
 ; EnableThread
 ; EnableXP
 ; EnableAdmin
