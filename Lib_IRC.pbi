@@ -38,7 +38,7 @@ Structure IRC_Connection ; Structure containing information about an IRC connect
   IRCd.s ; The Name and Version of the IRCd you are connecting to
   BytesSent.l ; Total Bytes Sent to server
   BytesRecv.l ; Total Bytes Rcvd from server
-  AutoReconnect.b ; Boolean to Reconnect on failure TODO 
+  AutoReconnect.b ; Boolean to Reconnect on failure TODO
   UseSSL.b
   List AvailableChannels.IRC_LIST_Channel()
 EndStructure
@@ -79,7 +79,10 @@ Global NewList Joined_Chans.IRC_Channel() ; A list of the currently-joined chann
 
 ; =DECLARE==========================================================================================================
 
-Declare IRC_LineCallBack(SocketID.l, Line$) ; This function should be included in your main program file, and is called when a new line is sent or received.
+Declare IRC_LineCallBack(SocketID.l, Line$) ; This function should be included in your main program file, and is called when a new line is sent or received.\
+Declare IRC_ErrorCallBack(SocketID.l, ErrorCode$, ErrorMsg$)
+Declare IRC_DBGCallBack(Text$)
+
 Declare.i IRC_Connection_AddBytesS(ParentSocketID.l, NewBytes.i) 
 Declare.b IRC_Connection_IsUsingSSL(ParentSocketID.l)
 
@@ -90,7 +93,7 @@ Procedure.i IRC_RawText(SocketID.l, TheText$) ; Sends Raw Text to the Server.  A
       
     Case #False ; Standard, Non-SSL SendText
       
-      Debug FormatDate("%hh:%ii:%ss",Date()) + " <"+Str(SocketID)+"> Send: " + TheText$
+      IRC_DBGCallBack(FormatDate("%hh:%ii:%ss",Date()) + " <"+Str(SocketID)+"> Send: " + TheText$)
       If SocketID <> #INVALID_SOCKET And Len(TheText$) > 0
         If Not FindString(TheText$, CR$) : TheText$ = TheText$ + CR$ : EndIf  
         ResultBytes.i = send_(SocketID, @TheText$, Len(TheText$), 0)
@@ -104,7 +107,7 @@ Procedure.i IRC_RawText(SocketID.l, TheText$) ; Sends Raw Text to the Server.  A
       
     Case #True ; SSL-Connection Send
       
-      Debug FormatDate("%hh:%ii:%ss",Date()) + " <"+Str(SocketID)+"> SSnd: " + TheText$
+      IRC_DBGCallBack(FormatDate("%hh:%ii:%ss",Date()) + " <"+Str(SocketID)+"> SSnd: " + TheText$)
       If SocketID <> #INVALID_SOCKET And Len(TheText$) > 0
         If Not FindString(TheText$, CR$) : TheText$ = TheText$ + CR$ : EndIf  
         ResultBytes.i = SSL_Client_SendString(SocketID, TheText$)
@@ -295,7 +298,7 @@ Procedure.b IRC_Channel_IsJoined(ParentSocketID.l, ChanName.s) ; Check if channe
   Protected Result.b = #False
   ForEach Joined_Chans()
     If Joined_Chans()\ChannelName$ = ChanName And Joined_Chans()\ParentSocketID = ParentSocketID
-      Result = #True : Debug "Channel " + ChanName + " found on Socket " + Str(ParentSocketID)
+      Result = #True : IRC_DBGCallBack("Channel " + ChanName + " found on Socket " + Str(ParentSocketID))
     EndIf
   Next
   ProcedureReturn Result
@@ -304,7 +307,7 @@ EndProcedure
 Procedure.b IRC_Channel_Join(ParentSocketID.l, ChanName.s) ; Add a channel to the Joined Channels list
   Protected Result.b = #False
   If Not IRC_Channel_IsJoined(ParentSocketID, ChanName)
-    AddElement(Joined_Chans()) : Debug "Joining: " + ChanName
+    AddElement(Joined_Chans()) : IRC_DBGCallBack("Joining: " + ChanName)
     Joined_Chans()\ParentSocketID = ParentSocketID
     Joined_Chans()\ChannelName$ = ChanName
     Result = #True
@@ -320,12 +323,12 @@ Procedure.b IRC_Channel_Part(ParentSocketID.l, ChanName.s) ; Remove a channel fr
         DeleteElement(Joined_Chans())
         If Not IRC_Channel_IsJoined(ParentSocketID, ChanName)
           Result = #True
-          Debug "Successfully Parted from " + ChanName + " on Socket " + Str(ParentSocketID)
+          IRC_DBGCallBack("Successfully Parted from " + ChanName + " on Socket " + Str(ParentSocketID))
         EndIf
       EndIf 
     Next
   Else
-    Debug "Requested PART from " + ChanName + " on Socket " + Str(ParentSocketID) + " but that channel is not found in the list."
+    IRC_DBGCallBack("Requested PART from " + ChanName + " on Socket " + Str(ParentSocketID) + " but that channel is not found in the list.")
   EndIf
   ProcedureReturn Result 
 EndProcedure
@@ -335,7 +338,7 @@ Procedure.b IRC_Channel_332(ParentSocketID.l, ChanName.s, Topic.s) ; Sets the to
   ForEach Joined_Chans()
     If Joined_Chans()\ParentSocketID = ParentSocketID And Joined_Chans()\ChannelName$ = ChanName
       Joined_Chans()\ChannelTopic$ = Topic
-      Debug "Topic for '" + ChanName + "' set to: "+ Topic +"'"
+      IRC_DBGCallBack("Topic for '" + ChanName + "' set to: "+ Topic +"'")
       Result = #True
     EndIf
   Next
@@ -347,7 +350,7 @@ Procedure.b IRC_Channel_333(ParentSocketID.l, ChanName.s, Author.s, DateTime.s)
   ForEach Joined_Chans()
     If Joined_Chans()\ParentSocketID = ParentSocketID And Joined_Chans()\ChannelName$ = ChanName
       Joined_Chans()\ChannelTopicAuthor$ = Author : Joined_Chans()\ChannelTopicDate$ = FormatDate("%mm/%dd/%yy at %hh:%ii:%ss", Val(DateTime))
-      Debug "333 Info Set for: " + ChanName
+      IRC_DBGCallBack("333 Info Set for: " + ChanName)
     EndIf
   Next
   ProcedureReturn Result
@@ -355,7 +358,7 @@ EndProcedure
 
 Procedure.b IRC_Channel_353(ParentSocketID.l, Channel.s, NickList.s) ; update list of users in chan from 353 line
   If Right(NickList,1) <> " " : NickList = NickList + " " : EndIf
-  Debug "NickList for " + Channel + ": '" + NickList + "'"
+  IRC_DBGCallBack("NickList for " + Channel + ": '" + NickList + "'")
   Protected Result.b = #False
   ForEach Joined_Chans()
     If Joined_Chans()\ChannelName$ = Channel And Joined_Chans()\ParentSocketID = ParentSocketID
@@ -365,12 +368,12 @@ Procedure.b IRC_Channel_353(ParentSocketID.l, Channel.s, NickList.s) ; update li
           For X = 1 To NickCountLine
             AddElement(Joined_Chans()\Users())
             Joined_Chans()\Users() = IRC_Nick_TrimUserSymbols(StringField(NickList, X, " "))
-            Debug "New Nick: " + IRC_Nick_TrimUserSymbols(StringField(NickList, X, " "))
+            IRC_DBGCallBack("New Nick: " + IRC_Nick_TrimUserSymbols(StringField(NickList, X, " ")))
           Next
         Else
           AddElement(Joined_Chans()\Users())
           Joined_Chans()\Users() = IRC_Nick_TrimUserSymbols(Trim(NickList))
-          Debug IRC_Nick_TrimUserSymbols(Trim(NickList))
+          IRC_DBGCallBack(IRC_Nick_TrimUserSymbols(Trim(NickList)))
         EndIf
         SortList(Joined_Chans()\Users(), #PB_Sort_Ascending | #PB_Sort_NoCase)
         Protected Current$ = "*****"
@@ -378,7 +381,7 @@ Procedure.b IRC_Channel_353(ParentSocketID.l, Channel.s, NickList.s) ; update li
           If Joined_Chans()\Users() <> Current$
             Current$ = Joined_Chans()\Users()
           Else
-            Debug "Deleted Duplicate: " + Joined_Chans()\Users()
+            IRC_DBGCallBack("Deleted Duplicate: " + Joined_Chans()\Users())
             DeleteElement(Joined_Chans()\Users())
           EndIf
         Next
@@ -390,12 +393,13 @@ Procedure.b IRC_Channel_353(ParentSocketID.l, Channel.s, NickList.s) ; update li
 EndProcedure
 
 Procedure.b IRC_Channel_DropUser(ParentSocketID.l, Channel.s, Nick.s) ; Remove a user from the list when they PART a CHAN
+  IRC_DBGCallBack("Removing User '"+Nick+"' From Channel '"+Channel+"'")
   Protected Result.b = #False
   ForEach Joined_Chans()
     If Joined_Chans()\ChannelName$ = Channel And Joined_Chans()\ParentSocketID = ParentSocketID
       ForEach Joined_Chans()\Users()
         If Joined_Chans()\Users() = IRC_Nick_TrimUserSymbols(Nick)
-          Debug "Removing User From " + Joined_Chans()\ChannelName$ + ": '" + Joined_Chans()\Users() + "'"
+          IRC_DBGCallBack("Removed User From " + Joined_Chans()\ChannelName$ + ": '" + Joined_Chans()\Users() + "'")
           DeleteElement(Joined_Chans()\Users())
           Result = #True
         EndIf
@@ -436,7 +440,7 @@ Procedure.b IRC_Connection_SetHost(ParentSocketID.l, NewHost.s) ; Updates the "S
   ForEach Instances()
     If Instances()\SocketID = ParentSocketID
       If NewHost <> ""
-        Debug "Setting Host for Socket " + Str(ParentSocketID) + ": '" + NewHost +"'"
+        IRC_DBGCallBack("Setting Host for Socket " + Str(ParentSocketID) + ": '" + NewHost +"'")
         Instances()\Svr_Host = NewHost
         Result = #True
       EndIf
@@ -565,7 +569,7 @@ Procedure.b IRC_Connection_SetIRCd(ParentSocketID.l, NewIRCd.s) ; Stores the IRC
   ForEach Instances()
     If Instances()\SocketID = ParentSocketID
       Instances()\IRCd = NewIRCd
-      Debug "Socket " + Str(ParentSocketID) + " is running '" + NewIRCd + "'"
+      IRC_DBGCallBack("Socket " + Str(ParentSocketID) + " is running '" + NewIRCd + "'")
       Result = #True
     EndIf
   Next
@@ -629,7 +633,7 @@ Procedure.b IRC_Connection_SetNetworkName(ParentSocketID.l, NewNetwkName.s) ; St
   ForEach Instances()
     If Instances()\SocketID = ParentSocketID
       Instances()\NetworkName = NewNetwkName
-      Debug "Setting network name string to: '" + NewNetwkName + "'"
+      IRC_DBGCallBack("Setting network name string to: '" + NewNetwkName + "'")
       Result = #True
     EndIf
   Next
@@ -729,7 +733,7 @@ Procedure.b IRC_Connection_AddConnection(ParentSocketID.l, NickName$, UserName$,
   Instances()\Svr_Port = Srvr_Port
   Instances()\Connected = #True
   Instances()\UseSSL = UseSSL
-  Debug "Instances() Element ADDED: " + Str(Instances()\SocketID)
+  IRC_DBGCallBack("Instances() Element ADDED: " + Str(Instances()\SocketID))
   ProcedureReturn Result
 EndProcedure
 
@@ -822,7 +826,7 @@ Procedure.b IRC_CMD_LIST(ParentSocketID.l) ; Sends the LIST command, to get a li
   ProcedureReturn Result  
 EndProcedure
 
-Procedure.b IRC_CMD_JOIN(ParentSocketID.l, ChannelName$) ; Sends the JOIN Command
+Procedure.b IRC_CMD_JOIN(ParentSocketID.l, ChannelName$)
   Protected Result.b = #False
   ForEach Instances()
     If Instances()\SocketID = ParentSocketID
@@ -886,7 +890,9 @@ Procedure IRC_ProtocolHandle(SocketID, Line$) ; This Function will analyze coded
       Case "353" ; RPL_NAMEREPLY
         IRC_Channel_353(\ParentSocketID, \Line_Channel, \Line_MsgText) ; Adds to names list, eliminates duplicates
       Case "376" ; End of MOTD 
-        IRC_RawText(SocketID, "JOIN #bots") ; Auto-Join a channel for saving time testing
+                 ;IRC_RawText(SocketID, "JOIN #cyberghetto") ; Auto-Join a channel for saving time testing
+      Case "401"
+        IRC_ErrorCallBack(\ParentSocketID, \Line_IRCCode, \Line_P4)
       Case "436", "433", "432" ; ERR_NICKNAMINUSE - Nickname is in use or Nickname Collision
         IRC_CMD_NICK(\ParentSocketID, \Line_P4+"_")
       Case "JOIN"
@@ -929,8 +935,9 @@ EndProcedure
   
 Procedure IRC_GetLines(*Socket) ; This ThreadProc is a loop, and one of these exists for each active connection, to recv text.
   Protected SocketID = PeekL(*Socket)
-  Debug "Read Loop For Socket: " + SocketID
+  IRC_DBGCallBack("Read Loop For Socket: " + SocketID)
   Protected UseSSL = IRC_Connection_IsUsingSSL(SocketID)
+  IRC_Connection_SetConnectionStatus(SocketID, #True)
   Repeat
     Protected NewList ReadLines.s()
     Protected TempString$ = ""
@@ -948,14 +955,14 @@ Procedure IRC_GetLines(*Socket) ; This ThreadProc is a loop, and one of these ex
           While BytesRecv = #SOCKET_ERROR
             BytesRecv = recv_(SocketID, @RecvBuffer, Len(RecvBuffer), 0)
             If BytesRecv = #WSAECONNRESET ; Connection Reset
-              Debug "Connection Reset."
+              IRC_DBGCallBack("Connection Reset.")
               closesocket_(SocketID)
               IRC_Connection_SetConnectionStatus(SocketID, #False)
               ConnectionStatus = #False
             ElseIf BytesRecv <= 0 ; Disconnected
               IRC_Connection_SetConnectionStatus(SocketID, #False)
               ConnectionStatus = #False
-              Debug "Disconnected..."
+              IRC_DBGCallBack("Disconnected...")
             Else
               IRC_Connection_AddBytesR(SocketID, BytesRecv)
               TempString$ = Trim(PeekS(@RecvBuffer))
@@ -974,7 +981,7 @@ Procedure IRC_GetLines(*Socket) ; This ThreadProc is a loop, and one of these ex
           Case #SSLEvent_Disconnect
             IRC_Connection_SetConnectionStatus(SocketID, #False) 
             ConnectionStatus = #False
-            Debug "SSL Connection Disconnected..."
+            IRC_DBGCallBack("SSL Connection Disconnected...")
         EndSelect
         
     EndSelect
@@ -1009,7 +1016,7 @@ Procedure IRC_GetLines(*Socket) ; This ThreadProc is a loop, and one of these ex
   
   Until ConnectionStatus = #False
   
-  Debug "Exiting Read Thread, Socket " + Str(SocketID)
+  IRC_DBGCallBack("Exiting Read Thread, Socket " + Str(SocketID))
   IRC_Connection_DropConnection(SocketID)
 EndProcedure
 
@@ -1023,11 +1030,11 @@ Procedure.l IRC_Connect(InSocket, Network_Addr$, Network_Port.i, NickName$, UseS
       
     Case #True ; Creating an SSL Connection
       InSocket = SSL_Client_OpenConnection(Network_Addr$, Network_Port) ; CryptLIb Connection Create
-      Debug "Socket (SSL) Created: " + Str(InSocket)
+      IRC_DBGCallBack("Socket (SSL) Created: " + Str(InSocket))
       
     Case #False ; Non SSL (Winsock2) type connections
       InSocket = Create_Socket_Connect(Network_Addr$, Network_Port) ; Winsock2 Connection Create                                                               
-      Debug "Socket Created: " + Str(InSocket)
+      IRC_DBGCallBack("Socket Created: " + Str(InSocket))
       
   EndSelect
   
@@ -1050,9 +1057,10 @@ EndProcedure
 
 
 ; IDE Options = PureBasic 5.31 (Windows - x86)
-; CursorPosition = 824
-; FirstLine = 132
-; Folding = ABACEAAAAAAg-3
+; CursorPosition = 407
+; FirstLine = 236
+; Folding = gBAC9PBABBEw--
 ; EnableThread
 ; EnableXP
 ; EnableAdmin
+; Executable = bot.exe

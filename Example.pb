@@ -1,9 +1,25 @@
 ﻿IncludeFile "Lib_IRC.pbi" ; IRC Functions
-;IncludeFile "WinHTTP.pbi" ; WinHTTP.lib interface
 
 Global QuitSignal = #False
 Global Socket01, Socket02, Socket03.l
 
+Procedure LogIt(Text$)
+  Protected File = OpenFile(#PB_Any, "event.log", #PB_File_Append)
+  WriteStringN(File, Text$)
+  CloseFile(File)
+EndProcedure
+
+Procedure IRC_DBGCallBack(Text$)
+  Debug Text$
+  LogIt(Text$)
+EndProcedure
+
+Procedure IRC_ErrorCallBack(SocketID.l, ErrorCode$, ErrorMsg$)
+  If SocketID = TunnelSock And ErrorCode$ = "401"
+    IsRemoteUserValid = #False
+    IRC_DBGCallBack("ErrorCallBack(): " + ErrorMsg$)
+  EndIf
+EndProcedure
 
 Procedure IRC_LineCallBack(SocketID.l, Line$) ; Required Function for handling text in your program. (Pre-Declared in Lib_IRC.pbi, Therefore it Must Exist.)
   
@@ -39,13 +55,13 @@ Procedure IRC_LineCallBack(SocketID.l, Line$) ; Required Function for handling t
   ; At this point you can do as you wish with the Line Data, using the ThisLine\ structure, but in this example
   ; we are simply debugging the received text with a timestamp.
   
-  Debug FormatDate("%hh:%ii:%ss",Date()) + " <"+ Str(SocketID) +  "> Scan: " + Line$
+  IRC_DBGCallBack(FormatDate("%hh:%ii:%ss",Date()) + " <"+ Str(SocketID) +  "> Scan: " + Line$)
   
 EndProcedure
 
 Procedure Main()
   If InitializeSockets() 
-    Debug "cryptInit(): " + cryptInit()
+    IRC_DBGCallBack("cryptInit(): " + cryptInit())
     Socket01 = IRC_Connect(Socket01, "irc.yournetwork.net", 6697, "testClient", #True)
     ;Socket02 = IRC_Connect(Socket02, "irc.someothernetwork.com", 6667, "test2")
     ;Socket03 = IRC_Connect(....
@@ -53,10 +69,10 @@ Procedure Main()
       Delay(27)
     Until QuitSignal = #True
     ShutdownSockets(1)
-    Debug "cryptEnd(): " + cryptEnd()
+    IRC_DBGCallBack("cryptEnd(): " + cryptEnd())
     End
   Else
-    Debug "Network Error."
+    IRC_DBGCallBack("Network Error.")
   EndIf
   
 EndProcedure
