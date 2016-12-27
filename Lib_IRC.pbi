@@ -396,14 +396,16 @@ Procedure.b IRC_Channel_DropUser(ParentSocketID.l, Channel.s, Nick.s) ; Remove a
   IRC_DBGCallBack("Removing User '"+Nick+"' From Channel '"+Channel+"'")
   Protected Result.b = #False
   ForEach Joined_Chans()
-    If Joined_Chans()\ChannelName$ = Channel And Joined_Chans()\ParentSocketID = ParentSocketID
-      ForEach Joined_Chans()\Users()
-        If Joined_Chans()\Users() = IRC_Nick_TrimUserSymbols(Nick)
-          IRC_DBGCallBack("Removed User From " + Joined_Chans()\ChannelName$ + ": '" + Joined_Chans()\Users() + "'")
-          DeleteElement(Joined_Chans()\Users())
-          Result = #True
-        EndIf
-      Next
+    If Joined_Chans()\ParentSocketID = ParentSocketID
+      If (Channel = "*") Or (Joined_Chans()\ChannelName$ = Channel)
+        ForEach Joined_Chans()\Users()
+          If Joined_Chans()\Users() = IRC_Nick_TrimUserSymbols(Nick)
+            IRC_DBGCallBack("Removed User From " + Joined_Chans()\ChannelName$ + ": '" + Joined_Chans()\Users() + "'")
+            DeleteElement(Joined_Chans()\Users())
+            Result = #True
+          EndIf
+        Next
+      EndIf
     EndIf
   Next
   ProcedureReturn Result
@@ -412,12 +414,14 @@ EndProcedure
 Procedure.b IRC_Channel_IsUser(ParentSocketID.l, ChannelName.s, Nick.s) ; Search for a nick, in a channel, on a socket
   Protected Result.b = #False
   ForEach Joined_Chans()
-    If Joined_Chans()\ChannelName$ = ChannelName And Joined_Chans()\ParentSocketID = ParentSocketID
-      ForEach Joined_Chans()\Users()
-        If Joined_Chans()\Users() = Nick 
-          Result = #True : ProcedureReturn Result
-        EndIf
-      Next
+    If Joined_Chans()\ParentSocketID = ParentSocketID
+      If (ChannelName = "*") Or (Joined_Chans()\ChannelName$ = ChannelName)  
+        ForEach Joined_Chans()\Users()
+          If Joined_Chans()\Users() = Nick 
+            Result = #True : ProcedureReturn Result
+          EndIf
+        Next
+      EndIf
     EndIf
   Next
   ProcedureReturn Result
@@ -915,7 +919,12 @@ Procedure IRC_ProtocolHandle(SocketID, Line$) ; This Function will analyze coded
         EndIf
         IRC_Nick_Update(\ParentSocketID, \Line_From, \Line_MsgText) ; replace all of ld nick with new nick
       Case "QUIT"
-        IRC_Channel_DropUser(\ParentSocketID, \Line_Channel, \Line_From)
+        Select \Line_From
+          Case IRC_Connection_GetNick(\ParentSocketID)
+            ; Indicates SELF QUIT
+          Default ; All Others
+            IRC_Channel_DropUser(\ParentSocketID, "*", \Line_From)
+        EndSelect
       Case "MODE"
         Select \Line_P4
           Case IRC_Connection_GetNick(\ParentSocketID)
@@ -923,7 +932,7 @@ Procedure IRC_ProtocolHandle(SocketID, Line$) ; This Function will analyze coded
         EndSelect
       Case "NOTICE"
         Select \Line_From
-          Case "NickServ"
+          Case "NickServ" ; Probably NickServ Requesting Auth. for a registered Nick.  
             ;
         EndSelect
       Case "PRIVMSG"
@@ -1057,9 +1066,9 @@ EndProcedure
 
 
 ; IDE Options = PureBasic 5.31 (Windows - x86)
-; CursorPosition = 407
-; FirstLine = 236
-; Folding = gBAC9PBABBEw--
+; CursorPosition = 422
+; FirstLine = 258
+; Folding = gBACEAAAAAAg---
 ; EnableThread
 ; EnableXP
 ; EnableAdmin
