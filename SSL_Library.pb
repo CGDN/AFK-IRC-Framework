@@ -763,7 +763,7 @@ EndIf
     
 EndWith
 
-ProcedureReturn BytesToCopy
+ProcedureReturn totalCopied
 
 EndProcedure
 
@@ -794,7 +794,7 @@ result = 0
 
 If cryptPushData(*Conn\hSession, @String$, Len(String$), @BytesCopied) = 0
    cryptFlushData(*Conn\hSession)
-   result = 1
+   result = BytesCopied
 EndIf
 
 ProcedureReturn result
@@ -822,8 +822,8 @@ ProcedureReturn result
 EndProcedure
 
 ; IDE Options = PureBasic 5.31 (Windows - x86)
-; CursorPosition = 220
-; FirstLine = 126
-; Folding = PARAOpiV9
+; CursorPosition = 765
+; FirstLine = 275
+; Folding = PARAOpCd0
 ; EnableUnicode
 ; EnableXP

@@ -83,7 +83,7 @@ Procedure.i Create_Socket_Connect(ServerHostName$, Port.i) ; Creates a new socke
   EndIf
 EndProcedure  
 ; IDE Options = PureBasic 5.31 (Windows - x86)
-; CursorPosition = 76
+; CursorPosition = 16
 ; Folding = --
 ; EnableThread
 ; EnableXP

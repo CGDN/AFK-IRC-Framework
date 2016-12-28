@@ -918,6 +918,13 @@ Procedure IRC_ProtocolHandle(SocketID, Line$) ; This Function will analyze coded
           IRC_Connection_SetNick(\ParentSocketID, \Line_MsgText) ; update my own nick
         EndIf
         IRC_Nick_Update(\ParentSocketID, \Line_From, \Line_MsgText) ; replace all of ld nick with new nick
+      Case "KICK" 
+        Select \Line_From
+          Case IRC_Connection_GetNick(\ParentSocketID)
+            IRC_Channel_Part(\ParentSocketID, \Line_Channel)
+          Default
+            IRC_Channel_DropUser(\ParentSocketID, \Line_Channel, \Line_P4)
+        EndSelect
       Case "QUIT"
         Select \Line_From
           Case IRC_Connection_GetNick(\ParentSocketID)
@@ -945,8 +952,10 @@ EndProcedure
 Procedure IRC_GetLines(*Socket) ; This ThreadProc is a loop, and one of these exists for each active connection, to recv text.
   Protected SocketID = PeekL(*Socket)
   IRC_DBGCallBack("Read Loop For Socket: " + SocketID)
+  Delay(1500)
   Protected UseSSL = IRC_Connection_IsUsingSSL(SocketID)
   IRC_Connection_SetConnectionStatus(SocketID, #True)
+  IRC_DBGCallBack("Starting loop...")
   Repeat
     Protected NewList ReadLines.s()
     Protected TempString$ = ""
@@ -973,6 +982,7 @@ Procedure IRC_GetLines(*Socket) ; This ThreadProc is a loop, and one of these ex
               ConnectionStatus = #False
               IRC_DBGCallBack("Disconnected...")
             Else
+              ;IRC_DBGCallBack("Recv: " + Str(BytesRecv) + " bytes.")
               IRC_Connection_AddBytesR(SocketID, BytesRecv)
               TempString$ = Trim(PeekS(@RecvBuffer))
             EndIf
@@ -983,9 +993,11 @@ Procedure IRC_GetLines(*Socket) ; This ThreadProc is a loop, and one of these ex
         Select SSL_Client_Event(SocketID)
           Case #SSLEvent_Data
             Protected *SSLBuff = AllocateMemory(Socket_Buffer_Size)
-            SSL_Client_ReceiveData(SocketID, *SSLBuff, Socket_Buffer_Size)
+            Protected BytesRecvSSL.i = SSL_Client_ReceiveData(SocketID, *SSLBuff, Socket_Buffer_Size)
+            ;IRC_DBGCallBack("SSLRecv: " + Str(BytesRecvSSL) + " bytes.")
             TempString$ = Trim(PeekS(*SSLBuff))
             FreeMemory(*SSLBuff)
+            IRC_Connection_AddBytesR(SocketID, BytesRecvSSL)
             ;Debug "SSL: " + TempString$
           Case #SSLEvent_Disconnect
             IRC_Connection_SetConnectionStatus(SocketID, #False) 
@@ -1066,9 +1078,8 @@ EndProcedure
 
 
 ; IDE Options = PureBasic 5.31 (Windows - x86)
-; CursorPosition = 422
-; FirstLine = 258
-; Folding = gBACEAAAAAAg---
+; CursorPosition = 5
+; Folding = ABACEAAAAAAA-b-
 ; EnableThread
 ; EnableXP
 ; EnableAdmin
