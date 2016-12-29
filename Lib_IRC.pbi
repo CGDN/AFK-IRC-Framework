@@ -713,6 +713,7 @@ Procedure.b IRC_Connection_DropConnection(ParentSocketID.l) ; Remove an element 
     If Instances()\SocketID = ParentSocketID
       If IsThread(Instances()\Thread) : KillThread(Instances()\Thread) : EndIf ; Kill Read-Loop Thread, if exists.
       DeleteElement(Instances())
+      IRC_DBGCallBack("Removed Instance with SocketID " + Str(ParentSocketID))
       Result = #True
     EndIf
   Next
@@ -928,7 +929,7 @@ Procedure IRC_ProtocolHandle(SocketID, Line$) ; This Function will analyze coded
       Case "QUIT"
         Select \Line_From
           Case IRC_Connection_GetNick(\ParentSocketID)
-            ; Indicates SELF QUIT
+            ; Indicates SELF QUIT, 
           Default ; All Others
             IRC_Channel_DropUser(\ParentSocketID, "*", \Line_From)
         EndSelect
@@ -942,6 +943,8 @@ Procedure IRC_ProtocolHandle(SocketID, Line$) ; This Function will analyze coded
           Case "NickServ" ; Probably NickServ Requesting Auth. for a registered Nick.  
             ;
         EndSelect
+      Case "ERROR"
+        IRC_DBGCallBack("[*] ERROR: " + \Line_MsgText)
       Case "PRIVMSG"
         ;
     EndSelect
@@ -1078,8 +1081,9 @@ EndProcedure
 
 
 ; IDE Options = PureBasic 5.31 (Windows - x86)
-; CursorPosition = 5
-; Folding = ABACEAAAAAAA-b-
+; CursorPosition = 715
+; FirstLine = 137
+; Folding = ABACEAAAAACg-b-
 ; EnableThread
 ; EnableXP
 ; EnableAdmin
