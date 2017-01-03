@@ -38,8 +38,9 @@ Structure IRC_Connection ; Structure containing information about an IRC connect
   IRCd.s ; The Name and Version of the IRCd you are connecting to
   BytesSent.l ; Total Bytes Sent to server
   BytesRecv.l ; Total Bytes Rcvd from server
-  AutoReconnect.b ; Boolean to Reconnect on failure TODO
-  UseSSL.b
+  UseSSL.b ; Boolean - whether the socket is a TLS/SSL socket
+  BotCmdID.s ; The Designated Character for a Command-Prefix (BOT)
+  AutoJoinChans.s ; Comma-Separated list of channels to auto join.
   List AvailableChannels.IRC_LIST_Channel()
 EndStructure
 
@@ -72,10 +73,19 @@ Structure IRC_Channel ; Properties of an IRC Channel
   List Users.s() ; A list of the Nicks int the channel, compiled from [353] Lines provided by server.
 EndStructure
 
+Structure Bot_Admin ; Properties of an Administrative User for the bot
+  ParentSocketID.l
+  NickName$
+  NickHostFull$
+  Auth.b
+  Password$
+EndStructure
+
 ; =LISTS============================================================================================================
 
 Global NewList Instances.IRC_Connection() ; A List of the active connections.
 Global NewList Joined_Chans.IRC_Channel() ; A list of the currently-joined channels (across all sockets)
+Global NewList Admins.Bot_Admin()         ; A list of the nicks authorized to perform Admin-Level Commands on the bot.
 
 ; =DECLARE==========================================================================================================
 
@@ -297,7 +307,7 @@ EndProcedure
 Procedure.b IRC_Channel_IsJoined(ParentSocketID.l, ChanName.s) ; Check if channel is currently / already joined.
   Protected Result.b = #False
   ForEach Joined_Chans()
-    If Joined_Chans()\ChannelName$ = ChanName And Joined_Chans()\ParentSocketID = ParentSocketID
+    If UCase(Joined_Chans()\ChannelName$) = UCase(ChanName) And Joined_Chans()\ParentSocketID = ParentSocketID
       Result = #True : IRC_DBGCallBack("Channel " + ChanName + " found on Socket " + Str(ParentSocketID))
     EndIf
   Next
@@ -707,11 +717,45 @@ Procedure.b IRC_Connection_IsUsingSSL(ParentSocketID.l) ; Check if a connection 
   ProcedureReturn Result
 EndProcedure
 
-Procedure.b IRC_Connection_DropConnection(ParentSocketID.l) ; Remove an element from the global list of active connections
+Procedure.b IRC_Connection_SetBotCmdID(ParentSocketID.l, NewCmdID.s)
   Protected Result.b = #False
   ForEach Instances()
+    If ( Instances()\SocketID = ParentSocketID ) And ( Trim(NewCmdID) <> "" )
+      Instances()\BotCmdID = NewCmdID
+      IRC_DBGCallBack("CommandID Character for " + Str(Instances()\SocketID) + " set to: " + NewCmdID)
+      Result = #True
+    EndIf
+  Next
+  ProcedureReturn Result
+EndProcedure
+
+Procedure.s IRC_Connection_GetBotCmdID(ParentSocketID.l)
+  Protected Result.s = ""
+  ForEach Instances()
+    If Instances()\SocketID = ParentSocketID
+      ProcedureReturn Instances()\BotCmdID
+    EndIf
+  Next
+EndProcedure
+
+Procedure.s IRC_Connection_GetAutoChans(ParentSocketID.l)
+  Protected Result.s = ""
+  ForEach Instances()
+    If Instances()\SocketID = ParentSocketID
+      Result = Instances()\AutoJoinChans
+    EndIf
+  Next
+  ProcedureReturn Result
+EndProcedure
+
+Procedure.b IRC_Connection_DropConnection(ParentSocketID.l) ; Remove an element from the global list of active connections
+  IRC_DBGCallBack("Removing Instance with SocketID " + Str(ParentSocketID)+ "...")
+  Protected Result.b = #False
+  ForEach Instances()
+    IRC_DBGCallBack("Found SocketID: " + Str(Instances()\SocketID))
     If Instances()\SocketID = ParentSocketID
       If IsThread(Instances()\Thread) : KillThread(Instances()\Thread) : EndIf ; Kill Read-Loop Thread, if exists.
+      IRC_DBGCallBack("Deleting...")
       DeleteElement(Instances())
       IRC_DBGCallBack("Removed Instance with SocketID " + Str(ParentSocketID))
       Result = #True
@@ -720,7 +764,7 @@ Procedure.b IRC_Connection_DropConnection(ParentSocketID.l) ; Remove an element 
   ProcedureReturn Result
 EndProcedure
 
-Procedure.b IRC_Connection_AddConnection(ParentSocketID.l, NickName$, UserName$, Srvr_Addr$, Srvr_Port.i, UseSSL.b=#False) ; Create a new connection
+Procedure.b IRC_Connection_AddConnection(ParentSocketID.l, NickName$, UserName$, Srvr_Addr$, Srvr_Port.i, UseSSL.b=#False, AutoJoinChans.s="") ; Create a new connection
   Protected Result.b = #False
   ForEach Instances()
     If Instances()\SocketID = ParentSocketID
@@ -738,6 +782,8 @@ Procedure.b IRC_Connection_AddConnection(ParentSocketID.l, NickName$, UserName$,
   Instances()\Svr_Port = Srvr_Port
   Instances()\Connected = #True
   Instances()\UseSSL = UseSSL
+  Instances()\BotCmdID = ">"
+  Instances()\AutoJoinChans = AutoJoinChans
   IRC_DBGCallBack("Instances() Element ADDED: " + Str(Instances()\SocketID))
   ProcedureReturn Result
 EndProcedure
@@ -841,6 +887,129 @@ Procedure.b IRC_CMD_JOIN(ParentSocketID.l, ChannelName$)
   ProcedureReturn Result
 EndProcedure
 
+; =IRC_BOT_ADMIN====================================================================================================
+
+Procedure.b IRC_Bot_Admin_Authorized(ParentSocketID.l, NickName$, NickHost$)
+  IRC_DBGCallBack("Checking Admin Auth() " + NickName$ + "...")
+  Protected Result.b = #False
+  ForEach Admins()
+    If Admins()\ParentSocketID = ParentSocketID And Admins()\NickName$ = NickName$ And Admins()\NickHostFull$ = NickHost$ And Admins()\Auth = #True
+      IRC_DBGCallBack("Authorized.")
+      Result = #True
+    EndIf
+  Next
+  ProcedureReturn Result
+EndProcedure
+
+Procedure.b IRC_Bot_Admin_Exist(ParentSocketID.l, NickName$)
+  IRC_DBGCallBack("Checking Admin Exist() " + NickName$ + "...")
+  Protected Result.b = #False
+  ForEach Admins()
+    If Admins()\ParentSocketID = ParentSocketID And Admins()\NickName$ = NickName$
+      IRC_DBGCallBack("Admin Exists.")
+      Result = #True
+    EndIf
+  Next
+  ProcedureReturn Result
+EndProcedure
+
+Procedure.b IRC_Bot_Admin_SetPass(ParentSocketID.l, NickName$, NickHost$, NewPass$)
+  IRC_DBGCallBack("Setting New Password For " + NickName$ + "...")
+  Protected Result.b = #False
+  ForEach Admins()
+    If Admins()\ParentSocketID = ParentSocketID And Admins()\NickName$ = NickName$ And Admins()\NickHostFull$ = NickHost$
+      Admins()\Password$ = ENC(NewPass$, CK$)
+      IRC_DBGCallBack("Password Reset.")
+      Result = #True
+    EndIf
+  Next
+  ProcedureReturn Result
+EndProcedure
+
+Procedure.b IRC_Bot_Admin_SetHost(ParentSocketID.l, NickName$, NickHost$)
+  IRC_DBGCallBack("Setting Full User@Host to '" + NickHost$ + "'")
+  Protected Result.b = #False
+  ForEach Admins()
+    If Admins()\ParentSocketID = ParentSocketID And Admins()\NickName$ = NickName$
+      Admins()\NickHostFull$ = NickHost$
+      IRC_DBGCallBack("User@Host Set.")
+      Result = #True
+    EndIf
+  Next
+  ProcedureReturn Result
+EndProcedure
+
+Procedure.b IRC_Bot_Admin_Authorize(ParentSocketID.l, NickHost$, Password$)
+  IRC_DBGCallBack("Setting Auth to TRUE for '" + NickHost$ + "'")
+  Protected Result.b = #False
+  ForEach Admins()
+    If Admins()\ParentSocketID = ParentSocketID And Admins()\NickHostFull$ = NickHost$ And DEC(Admins()\Password$, CK$) = Password$
+      Admins()\Auth = #True
+      IRC_DBGCallBack("Auth Set to TRUE.")
+      Result = #True
+    EndIf
+  Next
+  ProcedureReturn Result
+EndProcedure
+
+Procedure.b IRC_Bot_Admin_Register(ParentSocketID.l, NickName$, NickHost$, Password$)
+  IRC_DBGCallBack("Registering Admin '"+ NickHost$ +"'...")
+  Protected Result.b = #False
+  ForEach Admins()
+    If Admins()\ParentSocketID = ParentSocketID And Admins()\NickName$ = NickName$ And DEC(Admins()\Password$, CK$) = Password$
+      If IRC_Bot_Admin_SetHost(ParentSocketID, NickName$, NickHost$) And IRC_Bot_Admin_Authorize(ParentSocketID, NickHost$, Password$)
+        IRC_DBGCallBack("Admin Registered.")
+        Result = #True
+      EndIf
+    EndIf
+  Next
+  ProcedureReturn Result
+EndProcedure
+
+Procedure.b IRC_Bot_Admin_DeAuthorize(ParentSocketID.l, NickHost$)
+  IRC_DBGCallBack("Setting Auth to FALSE for '" + NickHost$ + "'")
+  Protected Result.b = #False
+  ForEach Admins()
+    If Admins()\ParentSocketID = ParentSocketID And Admins()\NickHostFull$ = NickHost$
+      Admins()\Auth = #False
+      Admins()\NickHostFull$ = ""
+      IRC_DBGCallBack("Auth Set to FALSE.")
+      Result = #True
+    EndIf
+  Next
+  ProcedureReturn Result
+EndProcedure
+
+Procedure.b IRC_Bot_Admin_Add(ParentSocketID.l, NickName$, Password$)
+  IRC_DBGCallBack("Adding Admin Account '"+ NickName$ + "'...")
+  Protected Result.b = #False
+  If IRC_Bot_Admin_Exist(ParentSocketID, NickName$)
+    IRC_DBGCallBack("Error, Admin Account '" + NickName$ + "' Already Exists with that Nick on this SocketID.")
+  Else
+    AddElement(Admins())
+    Admins()\NickName$ = NickName$
+    Admins()\ParentSocketID = ParentSocketID
+    Admins()\Password$ = ENC(Password$, CK$)
+    Admins()\Auth = #False
+    IRC_DBGCallBack("Admin '" + NickName$ + "' Created.")
+    Result = #True
+  EndIf
+  ProcedureReturn Result
+EndProcedure
+
+Procedure.b IRC_Bot_Admin_Delete(ParentSocketID.l, NickName$)
+  IRC_DBGCallBack("Deleting Admin '" + NickName$ + "'...")
+  Protected Result.b = #False
+  ForEach Admins()
+    If Admins()\ParentSocketID = ParentSocketID And Admins()\NickName$ = NickName$
+      DeleteElement(Admins())
+      IRC_DBGCallBack("Deleted Admin.")
+      Result = #True
+    EndIf
+  Next
+  ProcedureReturn Result
+EndProcedure
+
 ; =IRC_CONNECT======================================================================================================
 
 Procedure IRC_ProtocolHandle(SocketID, Line$) ; This Function will analyze coded Lines and make changes to the structure-db as needed
@@ -894,12 +1063,14 @@ Procedure IRC_ProtocolHandle(SocketID, Line$) ; This Function will analyze coded
         IRC_Channel_333(\ParentSocketID, \Line_Channel, \Line_P5, \Line_P6)
       Case "353" ; RPL_NAMEREPLY
         IRC_Channel_353(\ParentSocketID, \Line_Channel, \Line_MsgText) ; Adds to names list, eliminates duplicates
-      Case "376" ; End of MOTD 
-                 ;IRC_RawText(SocketID, "JOIN #cyberghetto") ; Auto-Join a channel for saving time testing
+      Case "376", "422"  ; End of MOTD  | MOTD File is missing / no motd
+        If IRC_Connection_GetAutoChans(\ParentSocketID) <> ""
+          IRC_RawText(\ParentSocketID, "JOIN " + IRC_Connection_GetAutoChans(\ParentSocketID))
+        EndIf
       Case "401"
         IRC_ErrorCallBack(\ParentSocketID, \Line_IRCCode, \Line_P4)
       Case "436", "433", "432" ; ERR_NICKNAMINUSE - Nickname is in use or Nickname Collision
-        IRC_CMD_NICK(\ParentSocketID, \Line_P4+"_")
+        IRC_CMD_NICK(\ParentSocketID, \Line_P4+"__")
       Case "JOIN"
         Select \Line_From
           Case IRC_Connection_GetNick(\ParentSocketID)
@@ -1041,10 +1212,12 @@ Procedure IRC_GetLines(*Socket) ; This ThreadProc is a loop, and one of these ex
   Until ConnectionStatus = #False
   
   IRC_DBGCallBack("Exiting Read Thread, Socket " + Str(SocketID))
+  
   IRC_Connection_DropConnection(SocketID)
+  
 EndProcedure
 
-Procedure.l IRC_Connect(InSocket, Network_Addr$, Network_Port.i, NickName$, UseSSL.b=#False, NickServPass$="", UserName$="") ; Returns the Socket Handle needed to manage the connection
+Procedure.l IRC_Connect(InSocket, Network_Addr$, Network_Port.i, NickName$, UseSSL.b=#False, NickServPass$="", UserName$="", AutoJoinString$="") ; Returns the Socket Handle needed to manage the connection
   ; Generate A UserName if none was given, declare a new thread, and default to #INVALID_SOCKET
   If UserName$ = "" : UserName$ = NickName$ : EndIf 
   Protected NewThread.l = -1
@@ -1067,7 +1240,7 @@ Procedure.l IRC_Connect(InSocket, Network_Addr$, Network_Port.i, NickName$, UseS
   ; send the login command to provide the login information passed to this function.
   
   If InSocket <> #INVALID_SOCKET
-    IRC_Connection_AddConnection(InSocket, NickName$, UserName$, Network_Addr$, Network_Port, UseSSL)
+    IRC_Connection_AddConnection(InSocket, NickName$, UserName$, Network_Addr$, Network_Port, UseSSL, AutoJoinString$)
     NewThread.l = CreateThread(@IRC_GetLines(), @InSocket)
     If IsThread(NewThread)
       IRC_Connection_SetThreadID(InSocket, NewThread)
@@ -1081,9 +1254,9 @@ EndProcedure
 
 
 ; IDE Options = PureBasic 5.31 (Windows - x86)
-; CursorPosition = 715
-; FirstLine = 137
-; Folding = ABACEAAAAACg-b-
+; CursorPosition = 921
+; FirstLine = 269
+; Folding = ECAEYAAAgA9A5--4-
 ; EnableThread
 ; EnableXP
 ; EnableAdmin

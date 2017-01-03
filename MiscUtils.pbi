@@ -134,14 +134,8 @@ Procedure TimeZoneOffset()
 EndProcedure
 
 
-
-
-
-
-
-
 ; IDE Options = PureBasic 5.31 (Windows - x86)
-; CursorPosition = 137
+; CursorPosition = 135
 ; Folding = I-
 ; EnableThread
 ; EnableXP
